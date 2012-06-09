@@ -102,22 +102,18 @@ int main(int argc, char* argv[]) {
   strncpy(filenameAria, argv[1], PATH_MAX);
   strncpy(filenameImage, argv[2], PATH_MAX);
 
-  //Open files
+  //Open ARIA files
   fileAria = fopen(filenameAria, "r");
-  if (fileAria == NULL) {
-    printf("Failed to open aria file (%s)\n", filenameAria);
-    return 1;
-  }
-  fileImage = fopen(filenameImage, "w");
-  if (fileImage == NULL) {
-    printf("Failed to open image file (%s)\n", filenameImage);
+  if (NULL == fileAria) {
+    printf("Failed to open ARIA file (%s)\n", filenameAria);
     return 1;
   }
 
   //Read until start of lines
   while(1) {
     if (NULL == fgets(string, LINE_MAX, fileAria)) {
-      printf("Failed to detect lines section in aria file (%s)\n", filenameAria);
+      printf("Failed to detect lines section in ARIA file (%s)\n", filenameAria);
+      fclose(fileAria);
       return 1;
     }
     if (0 == strcmp(LINES_START_STRING, string)) {
@@ -142,19 +138,22 @@ int main(int argc, char* argv[]) {
     newLines = (Line*)realloc(lines, sizeof(Line)*++numLines);
     if (NULL == newLines) {
       printf("Failed to allocate memory\n");
-      if (NULL != lines) {
+      fclose(fileAria);
+      if (NULL != lines)
         free(lines);
-      }
       return 1;
     }
     lines = newLines;
 
     //Scan this line
-    sscanf(string, "%d %d %d %d",
-      &(lines[numLines-1].x1),
-      &(lines[numLines-1].y1),
-      &(lines[numLines-1].x2),
-      &(lines[numLines-1].y2));
+    if (4 != sscanf(string, "%d %d %d %d", &(lines[numLines-1].x1), &(lines[numLines-1].y1),
+                                           &(lines[numLines-1].x2), &(lines[numLines-1].y2))) {
+      printf("Error scanning line\n");
+      fclose(fileAria);
+      if (NULL != lines)
+        free(lines);
+      return 1;
+    }
 
     //Update min and max values
     if (lines[numLines-1].x1 < xmin) xmin = lines[numLines-1].x1;
@@ -167,12 +166,14 @@ int main(int argc, char* argv[]) {
     if (lines[numLines-1].y2 > ymax) ymax = lines[numLines-1].y2;
   }
 
+  //Close ARIA file
+  fclose(fileAria);
+
   //Sanity check
   if (0 == numLines) {
     printf("No lines found\n");
-    if (NULL != lines) {
+    if (NULL != lines)
       free(lines);
-    }
     return 1;
   }
 
@@ -212,6 +213,15 @@ int main(int argc, char* argv[]) {
   //Update
   //printf("After conversions, the min/max points are: (%d,%d) -> (%d, %d)\n", xmin, ymin, xmax, ymax);
 
+  //Open image file
+  fileImage = fopen(filenameImage, "w");
+  if (NULL == fileImage) {
+    printf("Failed to open image file (%s)\n", filenameImage);
+    if (NULL != lines)
+      free(lines);
+    return 1;
+  }
+
   //Write image file header
   fprintf(fileImage, "P1\n#\n%d %d\n", xmax + 1, ymax + 1);
 
@@ -242,7 +252,7 @@ int main(int argc, char* argv[]) {
         );
 
         //Include points close to the line to avoid errors due to dithering and rounding
-        if (diff <= LINE_THRESHOLD) {
+        if (LINE_THRESHOLD >= diff) {
           onLine = 1;
           break;
         }
@@ -258,14 +268,12 @@ int main(int argc, char* argv[]) {
     fprintf(fileImage, "\n");
   }
 
-  //Free lines
-  if (NULL != lines) {
-    free(lines);
-  }
-
-  //Close files
-  fclose(fileAria);
+  //Close image file
   fclose(fileImage);
+
+  //Free lines
+  if (NULL != lines)
+    free(lines);
 
   //Done
   return 0;
